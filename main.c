@@ -71,7 +71,48 @@
 // Use project enums instead of #define for ON and OFF.
 
 #include <xc.h>
+#include <pic18f44k22.h>
+#include "d_uart.h"
+#include "d_lora.h"
+#include "d_spi.h"
 
+void interrupt tc_int(void) // High priority interrupt
+{
+    GIEH = 0;
+    
+    if (PIR1bits.RCIF)
+    {
+        uart_recep_char(RCREG);
+    }
+    
+    GIEH = 1;
+}
+ 
+void interrupt low_priority LowIsr(void) // Low priority interrupt
+{
+    GIEL = 0;
+    
+    if (INTCONbits.TMR0IF) {
+
+        INTCONbits.TMR0IF = 0;
+    }
+    
+    GIEL = 1;
+}
+
+struct System_state
+{
+    char mode; // Rx=0, Tx=1, None=2
+    char payload[100];
+    int reapet_delay;
+    char channel;
+    char rf_mode;
+    char src_addr;
+    char dest_addr;
+    char display_rx;
+};
+
+struct System_state state_struct;
 
 void init();
 
@@ -79,9 +120,21 @@ int main() {
     
     char i;
     
-   
     init();
+    //uart_init();
+    //lora_init(state_struct.mode);
     
+    state_struct.mode = 2; // None mode
+    *state_struct.payload = '\0';
+    state_struct.reapet_delay = 1500;
+    state_struct.channel = 1;
+    state_struct.rf_mode = 4;
+    state_struct.src_addr = LORA_ID;
+    state_struct.dest_addr = 0; // broadcast
+    state_struct.display_rx = 0;
+    
+    //GIEH = 1;
+    //GIEL = 1;
     
     for (i=0;i<7;i++) {
         
@@ -114,4 +167,6 @@ void init() {
     TRISCbits.RC2 = 1; // IRQ miniPic
     TRISCbits.RC0 = 0; // Transistor
     LATC0 = 0;
+    
+    RCONbits.IPEN = 1; // Enable levels interrupt
 }

@@ -22,10 +22,10 @@ void uart_init() {
     TRISCbits.TRISC6 = 0; // Tx : output
     
     // Tx conf
-    TXSTA1bits.TX9 = 0;  // 8b transmission
-    TXSTA1bits.TXEN = 1; // Enable Tx
-    TXSTA1bits.SYNC = 0; // No sync
-    TXSTA1bits.BRGH = 0; // Baud rate high speed
+    TXSTA1bits.TX9     = 0; // 8b transmission
+    TXSTA1bits.TXEN    = 1; // Enable Tx
+    TXSTA1bits.SYNC    = 0; // No sync
+    TXSTA1bits.BRGH    = 1; // Baud rate high speed
     BAUDCON1bits.BRG16 = 1; // 16b baud generator
     
     // Rx conf
@@ -33,13 +33,13 @@ void uart_init() {
     RCSTA1bits.CREN = 1; // Enable Rx
     
     // UART global
-    SPBRGH1 = 1; // Baud rate value
-    SPBRG1 = 190; // 9600
+    SPBRGH1 = 0x06; // Baud rate value
+    SPBRG1  = 0x82; // 9600
     
     PIR1bits.TX1IF = 0; // clear Tx flag
+    TXIE = 0;
     RC1IE = 1;          // Enable Rx interrupt on receive
     RC1IP = 1;          // Set interrupt to High priority
-    
     
     RCSTA1bits.SPEN = 1; // Enable UART
 }

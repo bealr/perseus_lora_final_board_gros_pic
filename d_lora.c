@@ -13,7 +13,6 @@
 #include "d_spi.h"
 #include "d_uart.h"
 
-unsigned int pack_nb; // Package number
 char timeout_var=0;
 
 struct System_state
@@ -27,7 +26,7 @@ struct System_state
     char dest_addr;
     char display_rx;
 };
-
+    
 extern struct System_state state_struct;
 
 /**
@@ -142,8 +141,6 @@ void lora_init(char mode) {
     lora_setCrcOn();
     lora_setPower('M'); // M = Max
     lora_setNodeAddress(state_struct.src_addr); // LORA_ID is set in header file
-    
-    pack_nb = 0; // Init package number to 0
 }
 
 /**
@@ -596,6 +593,7 @@ void lora_setMaxCurrent(char current) {
  **/
 void lora_setPacket(char dest, char *payload) {
     
+    static char pack_nb = 0;
     char i, j;
     
     char save_state;
@@ -627,7 +625,7 @@ void lora_setPacket(char dest, char *payload) {
      * Always set to 0, because the receiver will not acknowledge
      */
     
-    pack_nb++;
+    //pack_nb++;
     
     lora_spi_write(REG_OP_MODE, save_state); // restore module state
 }
@@ -640,13 +638,15 @@ void lora_setPacket(char dest, char *payload) {
  **/
 void lora_sendPacket(char dest, char* payload) {
     
-    // Wait until the packet is not sent ( by checking TX_Done_flag)
-    while (!(lora_spi_read(REG_IRQ_FLAGS) & 0x08)) ; // TODO: timeout
+
     
     lora_setPacket(dest, payload); // Load packet in chip buffer
     lora_clrFlags();               // Clear flags to prepare sending
     
     lora_spi_write(REG_OP_MODE, LORA_TX_MODE); // go Tx mode ! (SEND !!)
+    
+    // Wait until the packet is not sent ( by checking TX_Done_flag)
+    while (!(lora_spi_read(REG_IRQ_FLAGS) & 0x08)) ; // TODO: timeout
 }
 
 /**
@@ -663,7 +663,7 @@ void lora_setNodeAddress(char addr) {
     
     lora_spi_write(REG_OP_MODE, LORA_STANDBY_FSK_REGS_MODE); // Go in FSK mode to write the node addr
     lora_spi_write(REG_NODE_ADRS, addr); // Write node address
-	lora_spi_write(REG_BROADCAST_ADRS, 0x00); // Write broadcast adress
+	lora_spi_write(REG_BROADCAST_ADRS, 0x00); // Write broadcast address
 
     lora_spi_write(REG_OP_MODE, save_state); // restore module state
 }

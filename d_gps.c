@@ -32,8 +32,12 @@ void gps_receivecar(char car) {
     
     char trame_ok = 0;
     
+    
+    if (car == '$')
+        gps_buffer_pointer = 0;
+        
     *(gps_buffer_line + gps_buffer_pointer) = car;
-    gps_buffer_pointer++;
+
     
     
     if (*(gps_buffer_line + gps_buffer_pointer -1) == 13 && *(gps_buffer_line + gps_buffer_pointer) == 10) {
@@ -41,24 +45,26 @@ void gps_receivecar(char car) {
 					*(gps_buffer_line + gps_buffer_pointer)    = '\0';
                     
                     trame_ok = 1;
-                    gps_buffer_pointer = 0;
-                    LATC0 =~ LATC0;
+                    
 	}
     
     if (trame_ok) {
         if ( 
 					*(gps_buffer_line + 0) == '$' &&
 					*(gps_buffer_line + 1) == 'G' &&
-					*(gps_buffer_line + 2) == 'P' &&
+					*(gps_buffer_line + 2) == 'N' &&
 					*(gps_buffer_line + 3) == 'G' &&
-					*(gps_buffer_line + 4) == 'S' &&
-					*(gps_buffer_line + 5) == 'V') {
+					*(gps_buffer_line + 4) == 'G' &&
+					*(gps_buffer_line + 5) == 'A') {
 					
                     soft_interrupt |= 0x01;
 				  }
         
         //gps_parser(gps_buffer_parsed, gps_buffer_line);
     }
+    
+    
+    gps_buffer_pointer++;
 }
 
 

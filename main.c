@@ -84,43 +84,47 @@ char gps_buffer_parsed[15][15];
 char gps_buffer_line[90];
 char gps_buffer_pointer;
 
+char uart_rx_buffer[10]; // first byte is the pointer
+
 void interrupt high_priority tc_int(void) // High priority interrupt
 {
     char tmp;
     
-    GIEH = 0;
-    
     if (PIR1bits.RC1IF)
     {
-        //gps_receivecar(RCREG1);
-        PIR1bits.RC1IF = 0;
+        //LATD7 = 0;
+        *(uart_rx_buffer + *(uart_rx_buffer)) = RCREG1; // PointerCeption
+        uart_rx_buffer[0]++;
+        /*
+        if (gps_buffer_pointer > 79)
+            gps_buffer_pointer = 0;
+        */
+        if (RCSTA1bits.OERR) {
+            RCSTA1bits.CREN = 0;
+            (void)RCREG1;
+            RCSTA1bits.CREN = 1;
+            
+        }
         
-        tmp = RCREG1;
+        //LATD7 = 1;
     }
-    
-    GIEH = 1;
+    else {
+        Nop();
+    }
 }
  
 void interrupt low_priority LowIsr(void) // Low priority interrupt
 {
     char tmp;
     
-    GIEL = 0;
+    //GIEL = 0;
     
     if (INTCONbits.TMR0IF) {
 
         INTCONbits.TMR0IF = 0;
     }
     
-    if (PIR1bits.RC1IF)
-    {
-        //gps_receivecar(RCREG1);
-        PIR1bits.RC1IF = 0;
-        
-        tmp = RCREG1;
-    }
-    
-    GIEL = 1;
+    //GIEL = 1;
 }
 
 struct System_state
@@ -170,10 +174,26 @@ int main() {
     T0CONbits.T0PS = 0b111;
     T0CONbits.TMR0ON = 0;
         
-    
-    
-     
     while(1) {
+        
+        if (*(uart_rx_buffer) > 1) {
+            
+            gps_receivecar(*(uart_rx_buffer + 1));
+            
+            GIEH = 0;
+            // FIFO
+            *(uart_rx_buffer + 1) = *(uart_rx_buffer + 2);
+            *(uart_rx_buffer + 2) = *(uart_rx_buffer + 3);
+            *(uart_rx_buffer + 3) = *(uart_rx_buffer + 4);
+            *(uart_rx_buffer + 4) = *(uart_rx_buffer + 5);
+            *(uart_rx_buffer + 5) = *(uart_rx_buffer + 6);
+            *(uart_rx_buffer + 6) = *(uart_rx_buffer + 7);
+            *(uart_rx_buffer + 7) = *(uart_rx_buffer + 8);
+            *(uart_rx_buffer + 8) = *(uart_rx_buffer + 9);
+            uart_rx_buffer[0]--;
+            
+            GIEH = 1;
+        }
         
         if (soft_interrupt & 0x01) { // GPS GPGSV !
             soft_interrupt &= 0xFE;
@@ -182,7 +202,6 @@ int main() {
             lora_sendPacket(0, state_struct.payload);
             
         }
-        
 
     }
     
@@ -194,9 +213,7 @@ void init() {
     OSCCONbits.IRCF = 0b111; // 16MHz
     OSCCONbits.SCS = 0b00; // Primary osc
     
-    OSCTUNEbits.TUN = 0b011111;
     OSCTUNEbits.PLLEN = 1;
-    
     
     ANSELA = 0;
     ANSELB = 0;
@@ -211,6 +228,8 @@ void init() {
     
     RCONbits.IPEN = 1; // Enable levels interrupt
     soft_interrupt = 0;
+    
+    *uart_rx_buffer = 1;
 }
 
 void load_tab(char* toload, char* tab) {

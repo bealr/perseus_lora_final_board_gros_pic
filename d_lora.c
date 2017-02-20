@@ -19,7 +19,7 @@ char timeout_var=0;
 struct System_state
 {
     char mode; // Rx=0, Tx=1, None=2
-    char payload[100];
+    char payload[255];
     int reapet_delay;
     char channel;
     char rf_mode;
@@ -53,9 +53,14 @@ void lora_init(char mode) {
     /* SELF TEST LORA MODULE
      * Blinks led if LoRa chip works
      * */
+    LATD7 = 1;
     if (lora_spi_read(REG_VERSION) == 0x22) {
         
-        // LORA OK
+        for (i=0;i<7;i++) {
+            LATD7 = ~LATD7;
+            __delay_ms(20);
+        }
+        LATD7 = 1;
     }
     
     lora_setMaxCurrent(0x1B); // 0x1B = 100mA
@@ -178,12 +183,15 @@ void lora_spi_write(char addr, char data) {
  **/
 char lora_spi_read(char addr) {
     
+    char tmp;
+    
     LATD5 = 0; // CS_lora
     spi_w8b(addr & 0x7F); // read mode
-    spi_w8b(0x00);        // To generate clock
+    tmp = spi_r8b();
+    
     LATD5 = 1; // CS_lora
     
-    return spi_r8b();
+    return tmp;
 }
 
 /**
@@ -631,18 +639,14 @@ void lora_setPacket(char dest, char *payload) {
   * @return none
  **/
 void lora_sendPacket(char dest, char* payload) {
-
-    LATA0 = 1; // Tx led: ON
+    
+    // Wait until the packet is not sent ( by checking TX_Done_flag)
+    while (!(lora_spi_read(REG_IRQ_FLAGS) & 0x08)) ; // TODO: timeout
     
     lora_setPacket(dest, payload); // Load packet in chip buffer
     lora_clrFlags();               // Clear flags to prepare sending
     
     lora_spi_write(REG_OP_MODE, LORA_TX_MODE); // go Tx mode ! (SEND !!)
-    
-    // Wait until the packet is not sent ( by checking TX_Done_flag)
-    while (!(lora_spi_read(REG_IRQ_FLAGS) & 0x08)) ; // TODO: timeout
-    
-    LATA0 = 0; // Tx Led: OFF
 }
 
 /**
@@ -667,7 +671,7 @@ void lora_setNodeAddress(char addr) {
 /**
   * @desc Set packet max length
   * @param char : max length
-  * @return none
+  * @return none100
  **/
 void lora_setPacquetLength(char l) {
     
@@ -737,11 +741,20 @@ char lora_availableData() {
     T0CONbits.TMR0ON = 1;
     
     TMR0 = 0;
-    while (!(lora_spi_read(REG_IRQ_FLAGS) & 0x10) && !timeout(3)) ;
-    
+    //
+    while(!(lora_spi_read(REG_IRQ_FLAGS) & 0x10)) {
+
+        if(timeout(3))
+             return 0; // If no packets received during a 3s timeout
+    }
+
     // Waiting to read first payload bytes from packet
     TMR0 = 0;
-    while (!lora_spi_read(REG_FIFO_RX_BYTE_ADDR) && !timeout(3)) ;
+    while (!lora_spi_read(REG_FIFO_RX_BYTE_ADDR)) {
+
+        if(timeout(3))
+            return 0; // If no packets received during a 3s timeout
+    }
     
     T0CONbits.TMR0ON = 0;
     

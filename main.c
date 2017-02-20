@@ -15,7 +15,7 @@
 
 // CONFIG1H
 #pragma config FOSC = INTIO67   // Oscillator Selection bits (Internal oscillator block)
-#pragma config PLLCFG = ON     // 4X PLL Enable (Oscillator used directly)
+#pragma config PLLCFG = ON      // 4X PLL Enable (Oscillator multiplied by 4)
 #pragma config PRICLKEN = OFF   // Primary clock enable bit (Primary clock can be disabled by software)
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal/External Oscillator Switchover bit (Oscillator Switchover mode disabled)
@@ -30,12 +30,12 @@
 #pragma config WDTPS = 32768    // Watchdog Timer Postscale Select bits (1:32768)
 
 // CONFIG3H
-#pragma config CCP2MX = PORTC1  // CCP2 MUX bit (CCP2 input/output is multiplexed with RC1)
+#pragma config CCP2MX = PORTB3  // CCP2 MUX bit (CCP2 input/output is multiplexed with RB3)
 #pragma config PBADEN = OFF     // PORTB A/D Enable bit (PORTB<5:0> pins are configured as digital I/O on Reset)
-#pragma config CCP3MX = PORTB5  // P3A/CCP3 Mux bit (P3A/CCP3 input/output is multiplexed with RB5)
-#pragma config HFOFST = OFF     // HFINTOSC Fast Start-up (HFINTOSC output and ready status are delayed by the oscillator stable status)
-#pragma config T3CMX = PORTC0   // Timer3 Clock input mux bit (T3CKI is on RC0)
-#pragma config P2BMX = PORTD2   // ECCP2 B output mux bit (P2B is on RD2)
+#pragma config CCP3MX = PORTE0  // P3A/CCP3 Mux bit (P3A/CCP3 input/output is mulitplexed with RE0)
+#pragma config HFOFST = ON      // HFINTOSC Fast Start-up (HFINTOSC output and ready status are not delayed by the oscillator stable status)
+#pragma config T3CMX = PORTB5   // Timer3 Clock input mux bit (T3CKI is on RB5)
+#pragma config P2BMX = PORTC0   // ECCP2 B output mux bit (P2B is on RC0)
 #pragma config MCLRE = EXTMCLR  // MCLR Pin Enable bit (MCLR pin enabled, RE3 input pin disabled)
 
 // CONFIG4L
@@ -72,17 +72,30 @@
 
 #include <xc.h>
 #include <pic18f44k22.h>
+
 #include "d_uart.h"
 #include "d_lora.h"
 #include "d_spi.h"
+#include "d_gps.h"
 
-void interrupt tc_int(void) // High priority interrupt
+char soft_interrupt;
+
+char gps_buffer_parsed[15][15];
+char gps_buffer_line[90];
+char gps_buffer_pointer;
+
+void interrupt high_priority tc_int(void) // High priority interrupt
 {
+    char tmp;
+    
     GIEH = 0;
     
-    if (PIR1bits.RCIF)
+    if (PIR1bits.RC1IF)
     {
-        uart_recep_char(RCREG);
+        //gps_receivecar(RCREG1);
+        PIR1bits.RC1IF = 0;
+        
+        tmp = RCREG1;
     }
     
     GIEH = 1;
@@ -90,11 +103,21 @@ void interrupt tc_int(void) // High priority interrupt
  
 void interrupt low_priority LowIsr(void) // Low priority interrupt
 {
+    char tmp;
+    
     GIEL = 0;
     
     if (INTCONbits.TMR0IF) {
 
         INTCONbits.TMR0IF = 0;
+    }
+    
+    if (PIR1bits.RC1IF)
+    {
+        //gps_receivecar(RCREG1);
+        PIR1bits.RC1IF = 0;
+        
+        tmp = RCREG1;
     }
     
     GIEL = 1;
@@ -103,7 +126,7 @@ void interrupt low_priority LowIsr(void) // Low priority interrupt
 struct System_state
 {
     char mode; // Rx=0, Tx=1, None=2
-    char payload[100];
+    char payload[255];
     int reapet_delay;
     char channel;
     char rf_mode;
@@ -115,47 +138,65 @@ struct System_state
 struct System_state state_struct;
 
 void init();
+void load_tab(char* toload, char* tab);
 
 int main() {
     
     char i;
     
     init();
-    //uart_init();
-    //lora_init(state_struct.mode);
     
-    state_struct.mode = 2; // None mode
+    uart_init();
+    spi_init();
+    gps_init();
+    
+    state_struct.mode = LORA_MODE_TX; // None mode
     *state_struct.payload = '\0';
-    state_struct.reapet_delay = 1500;
-    state_struct.channel = 1;
+    state_struct.reapet_delay = 500;
+    state_struct.channel = 5;
     state_struct.rf_mode = 4;
     state_struct.src_addr = LORA_ID;
     state_struct.dest_addr = 0; // broadcast
     state_struct.display_rx = 0;
     
-    //GIEH = 1;
-    //GIEL = 1;
-    
-    for (i=0;i<7;i++) {
-        
-        LATD7 = ~LATD7;
-        __delay_ms(20);
-    }
+    LATD7 = 0;
+    lora_init(state_struct.mode);
 
+    GIEH = 1;
+    GIEL = 1;
     
+    T0CONbits.PSA = 0;
+    T0CONbits.T08BIT = 0;
+    T0CONbits.T0PS = 0b111;
+    T0CONbits.TMR0ON = 0;
+        
+    
+    
+     
     while(1) {
         
-        LATD7 = ~PORTCbits.RC2;
+        if (soft_interrupt & 0x01) { // GPS GPGSV !
+            soft_interrupt &= 0xFE;
+            
+            load_tab(gps_buffer_line, state_struct.payload);
+            lora_sendPacket(0, state_struct.payload);
+            
+        }
         
+
     }
     
     return 0;
 }
 
 void init() {
-    
+   
     OSCCONbits.IRCF = 0b111; // 16MHz
-    OSCCONbits.SCS = 0b11; // Primary osc
+    OSCCONbits.SCS = 0b00; // Primary osc
+    
+    OSCTUNEbits.TUN = 0b011111;
+    OSCTUNEbits.PLLEN = 1;
+    
     
     ANSELA = 0;
     ANSELB = 0;
@@ -169,4 +210,15 @@ void init() {
     LATC0 = 0;
     
     RCONbits.IPEN = 1; // Enable levels interrupt
+    soft_interrupt = 0;
+}
+
+void load_tab(char* toload, char* tab) {
+    char i;
+    
+    for (i=0;*(toload+i) != '\0';i++)
+        *(tab+i) = *(toload+i);
+    
+    
+    *(tab+i) = '\0';
 }

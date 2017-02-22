@@ -176,6 +176,8 @@ int main() {
         
     while(1) {
         
+        LATD7 = ~PORTCbits.RC2;
+        
         if (*(uart_rx_buffer) > 1) {
             
             gps_receivecar(*(uart_rx_buffer + 1));
@@ -230,6 +232,10 @@ void init() {
     soft_interrupt = 0;
     
     *uart_rx_buffer = 1;
+    
+    TRISCbits.RC3 = 1; // *
+    TRISCbits.RC4 = 1; // * I2C
+    
 }
 
 void load_tab(char* toload, char* tab) {
@@ -237,7 +243,6 @@ void load_tab(char* toload, char* tab) {
     
     for (i=0;*(toload+i) != '\0';i++)
         *(tab+i) = *(toload+i);
-    
     
     *(tab+i) = '\0';
 }
